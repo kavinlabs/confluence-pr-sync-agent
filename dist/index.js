@@ -79727,7 +79727,7 @@ function wrappy (fn, cb) {
  *
  * Validates that:
  *   1. The commenter has write access to the repo
- *   2. The comment body is exactly "approve" (case-insensitive)
+ *   2. The comment body is exactly "approve-confluence" (case-insensitive)
  *   3. The comment is on a PR that has our bot's proposal comment
  *
  * Then applies the changes to Confluence.
@@ -79786,10 +79786,10 @@ async function runApply(inputs, context, octokit) {
         return;
     }
     const prNumber = issue.number;
-    //Verify comment body is exactly "approve"
+    //Verify comment body is exactly "approve-confluence"
     const body = comment.body.trim().toLowerCase();
-    if (body !== 'approve') {
-        core.info(`Skipping as comment body is "${comment.body.trim()}" (not "approve")`);
+    if (body !== 'approve-confluence') {
+        core.info(`Skipping as comment body is "${comment.body.trim()}" (not "approve-confluence")`);
         return;
     }
     //Verify actor has write/admin access
@@ -79974,15 +79974,53 @@ exports.MARKER = '<!-- confluence-pr-sync-agent-marker -->';
 //Build comment body
 function buildProposalComment(proposal, pages) {
     const pageMap = new Map(pages.map((p) => [p.id, p]));
-    const tableRows = proposal.pages
-        .flatMap((pp) => pp.changes.map((c) => {
+    const changesSection = proposal.pages
+        .map((pp, pageIndex) => {
         const page = pageMap.get(pp.id);
-        const pageLink = page
-            ? `[${page.title}](${page.webUrl})`
-            : `Page \`${pp.id}\``;
-        return `| ${pageLink} | \`${c.type}\` | **${c.heading}** | ${c.rationale} |`;
-    }))
-        .join('\n');
+        const pageLabel = `Page ${pageIndex + 1}`;
+        const pageTitle = page ? page.title : `Page ${pp.id}`;
+        const detailsOpen = pageIndex === 0 ? ' open' : '';
+        const pageLinkLine = page
+            ? `- Page Link: [${page.title}](${page.webUrl})`
+            : `- Page ID: \`${pp.id}\``;
+        if (!pp.changes.length) {
+            return [
+                `<details${detailsOpen}>`,
+                `<summary><strong>${pageLabel}:</strong> ${pageTitle}</summary>`,
+                '',
+                pageLinkLine,
+                '',
+                '_No proposed section changes._',
+                '</details>',
+            ].join('\n');
+        }
+        const changeBlocks = pp.changes
+            .map((c, index) => {
+            const beforeValue = c.before_excerpt?.trim() || '(none)';
+            const afterValue = c.after_markdown?.trim() || '(none)';
+            return [
+                `**Change ${index + 1}**`,
+                `- Section: **${c.heading || '(unspecified)'}**`,
+                `- Type: \`${c.type}\``,
+                `- Before:`,
+                codeFence(beforeValue, 'text'),
+                `- After:`,
+                codeFence(afterValue, 'markdown'),
+                `- Rationale: ${c.rationale}`,
+            ].join('\n');
+        })
+            .join('\n\n');
+        return [
+            `<details${detailsOpen}>`,
+            `<summary><strong>${pageLabel}:</strong> ${pageTitle}</summary>`,
+            '',
+            pageLinkLine,
+            '',
+            changeBlocks,
+            '</details>',
+        ].join('\n');
+    })
+        .join('\n\n');
     const risksSection = proposal.pages
         .filter((pp) => pp.risks?.length)
         .map((pp) => {
@@ -80000,9 +80038,7 @@ function buildProposalComment(proposal, pages) {
 ${hasChanges
         ? `### Proposed Changes
 
-| Page | Type | Section | Rationale |
-|------|------|---------|-----------|
-${tableRows}
+${changesSection}
 
 ${risksSection
             ? `### Risks & Caveats
@@ -80012,17 +80048,17 @@ ${risksSection}
 `
             : ''}### How to apply
 
-Reply to this comment with exactly:
+Post a **new comment** on this PR containing:
 
 \`\`\`
-approve
+approve-confluence
 \`\`\`
 
 A collaborator with write access must post the approval.`
         : `> No documentation changes are required for this PR.`}
 
 <details>
-<summary>Raw proposal JSON (used by apply step — do not edit)</summary>
+<summary>Raw proposal JSON (used by apply step)</summary>
 
 \`\`\`json
 ${JSON.stringify(proposal, null, 2)}
@@ -80031,6 +80067,11 @@ ${JSON.stringify(proposal, null, 2)}
 </details>
 `;
     return body;
+}
+function codeFence(content, language) {
+    const maxTickRun = Math.max(0, ...Array.from(content.matchAll(/`+/g), (match) => match[0].length));
+    const fence = '`'.repeat(Math.max(3, maxTickRun + 1));
+    return `${fence}${language}\n${content}\n${fence}`;
 }
 //Find existing bot comment
 async function findExistingComment(octokit, owner, repo, prNumber) {
