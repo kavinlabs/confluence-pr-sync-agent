@@ -80236,6 +80236,39 @@ exports.ConfluenceClient = ConfluenceClient;
  * XHTML -> Markdown  uses `turndown`  (for sending to the LLM)
  * Markdown -> XHTML  uses `markdown-it` + post-processing (for writing back to Confluence)
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -80245,6 +80278,7 @@ exports.markdownToXhtml = markdownToXhtml;
 exports.applyChange = applyChange;
 const turndown_1 = __importDefault(__nccwpck_require__(5488));
 const markdown_it_1 = __importDefault(__nccwpck_require__(5182));
+const core = __importStar(__nccwpck_require__(7484));
 //XHTML -> Markdown
 const td = new turndown_1.default({
     headingStyle: 'atx',
@@ -80364,29 +80398,94 @@ function updateSection(body, heading, beforeExcerpt, afterXhtml) {
     // Do not append for failed update matches; preserve source when anchor is ambiguous.
     return body;
 }
+/*function appendAfterHeading(body: string, heading: string, afterXhtml: string): string {
+  const headingPattern = new RegExp(
+    `(<h[1-6][^>]*>[^<]*${escapeForRegex(heading)}[^<]*</h[1-6]>)`,
+    'i'
+  );
+  return body.replace(headingPattern, `$1\n${afterXhtml.trim()}`);
+}
+
+function prependBeforeHeading(body: string, heading: string, afterXhtml: string): string {
+  const headingPattern = new RegExp(
+    `(<h[1-6][^>]*>[^<]*${escapeForRegex(heading)}[^<]*</h[1-6]>)`,
+    'i'
+  );
+  return body.replace(headingPattern, `${afterXhtml.trim()}\n$1`);
+}*/
 function appendAfterHeading(body, heading, afterXhtml) {
-    const headingPattern = new RegExp(`(<h[1-6][^>]*>[^<]*${escapeForRegex(heading)}[^<]*</h[1-6]>)`, 'i');
-    return body.replace(headingPattern, `$1\n${afterXhtml.trim()}`);
+    const anyHeadingPattern = /<h([1-6])[^>]*>[\s\S]*?<\/h\1>/gi;
+    let match;
+    while ((match = anyHeadingPattern.exec(body)) !== null) {
+        const innerText = match[0].replace(/<[^>]+>/g, '').trim();
+        if (innerText.toLowerCase() === heading.trim().toLowerCase()) {
+            const insertAt = match.index + match[0].length;
+            return body.slice(0, insertAt) + '\n' + afterXhtml.trim() + body.slice(insertAt);
+        }
+    }
+    return body + '\n' + afterXhtml.trim();
 }
 function prependBeforeHeading(body, heading, afterXhtml) {
-    const headingPattern = new RegExp(`(<h[1-6][^>]*>[^<]*${escapeForRegex(heading)}[^<]*</h[1-6]>)`, 'i');
-    return body.replace(headingPattern, `${afterXhtml.trim()}\n$1`);
+    const anyHeadingPattern = /<h([1-6])[^>]*>[\s\S]*?<\/h\1>/gi;
+    let match;
+    while ((match = anyHeadingPattern.exec(body)) !== null) {
+        const innerText = match[0].replace(/<[^>]+>/g, '').trim();
+        if (innerText.toLowerCase() === heading.trim().toLowerCase()) {
+            return body.slice(0, match.index) + afterXhtml.trim() + '\n' + body.slice(match.index);
+        }
+    }
+    return afterXhtml.trim() + '\n' + body;
 }
 function deleteSection(body, _heading, beforeExcerpt) {
     if (!beforeExcerpt)
         return body;
     return body.replace(beforeExcerpt.trim(), '');
 }
+/*function findSectionRange(body: string, heading: string): { start: number; end: number } | null {
+  if (!heading.trim()) return null;
+
+  const headingPattern = new RegExp(
+    `<h([1-6])[^>]*>[^<]*${escapeForRegex(heading.trim())}[^<]*</h\\1>`,
+    'i'
+  );
+  const headingMatch = headingPattern.exec(body);
+  if (!headingMatch || headingMatch.index < 0) return null;
+
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = body.slice(sectionStart);
+  const nextHeadingPattern = /<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/i;
+  const nextMatch = nextHeadingPattern.exec(rest);
+  const sectionEnd = nextMatch ? sectionStart + nextMatch.index : body.length;
+
+  return { start: sectionStart, end: sectionEnd };
+}*/
 function findSectionRange(body, heading) {
     if (!heading.trim())
         return null;
-    const headingPattern = new RegExp(`<h([1-6])[^>]*>[^<]*${escapeForRegex(heading.trim())}[^<]*</h\\1>`, 'i');
-    const headingMatch = headingPattern.exec(body);
-    if (!headingMatch || headingMatch.index < 0)
+    // Find all heading tags and check their inner text (after stripping child tags)
+    const anyHeadingPattern = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
+    let headingMatch;
+    let foundMatch = null;
+    while ((headingMatch = anyHeadingPattern.exec(body)) !== null) {
+        core.info(`findSectionRange: raw heading tag: ${headingMatch[0]}`);
+        const level = headingMatch[1];
+        const innerText = headingMatch[2].replace(/<[^>]+>/g, '').trim(); // strip child tags
+        core.info(`findSectionRange: innerText="${innerText}" looking for="${heading.trim()}"`);
+        if (innerText.toLowerCase() === heading.trim().toLowerCase()) {
+            foundMatch = {
+                index: headingMatch.index,
+                length: headingMatch[0].length,
+                level,
+            };
+            break;
+        }
+    }
+    if (!foundMatch)
         return null;
-    const sectionStart = headingMatch.index + headingMatch[0].length;
+    const sectionStart = foundMatch.index + foundMatch.length;
     const rest = body.slice(sectionStart);
-    const nextHeadingPattern = /<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/i;
+    // Find the next heading of same or higher level
+    const nextHeadingPattern = new RegExp(`<h[1-${foundMatch.level}][^>]*>`, 'i');
     const nextMatch = nextHeadingPattern.exec(rest);
     const sectionEnd = nextMatch ? sectionStart + nextMatch.index : body.length;
     return { start: sectionStart, end: sectionEnd };
