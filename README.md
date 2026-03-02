@@ -6,7 +6,89 @@ When a Pull Request is opened or updated, the action reads the diff, fetches the
 
 Check out this **[Demo PR](https://github.com/kavinlabs/ai-code-reviewer-personality-api/pull/6)** to see it in action
 
----
+
+## Example workflows
+
+### 1) Propose Confluence changes (runs on PR updates)
+
+``` yaml
+name: Propose Confluence Changes
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: confluence-propose-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  propose:
+    name: Propose Confluence Updates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kavinlabs/confluence-pr-sync-agent@v1
+        with:
+          mode: propose
+          confluence_type: cloud
+          confluence_base_url: ${{ vars.CONFLUENCE_BASE_URL }}
+          confluence_token: ${{ secrets.CONFLUENCE_TOKEN }}
+          confluence_user: ${{ vars.CONFLUENCE_USER }}
+          page_ids: |
+            123456789
+            987654321
+          llm_provider: openai
+          llm_model: gpt-4o
+          llm_api_key: ${{ secrets.OPENAI_API_KEY }}
+```
+
+### 2) Apply Confluence changes (requires approval comment)
+
+**To apply changes:** add a new PR comment with `approve-confluence`.
+
+``` yaml
+name: Apply Confluence Changes
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: confluence-apply-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply Confluence Updates
+    runs-on: ubuntu-latest
+    if: |
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'approve-confluence')
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: kavinlabs/confluence-pr-sync-agent@v1
+        with:
+          mode: apply
+          confluence_type: cloud
+          confluence_base_url: ${{ vars.CONFLUENCE_BASE_URL }}
+          confluence_token: ${{ secrets.CONFLUENCE_TOKEN }}
+          confluence_user: ${{ vars.CONFLUENCE_USER }}
+          page_ids: |
+            123456789
+            987654321
+          llm_provider: openai
+          llm_model: gpt-4o
+          llm_api_key: ${{ secrets.OPENAI_API_KEY }}
+```
+
 
 ## How it works
 ### 1. Confluence (Before PR)
@@ -14,11 +96,11 @@ Check out this **[Demo PR](https://github.com/kavinlabs/ai-code-reviewer-persona
 
 ### 2. Action suggests Confluence changes based on PR
 ![Confluence change proposal in PR](screenshots/proposal.png)
-Lists all confluence page changes proposed by the LLM.
+Lists all Confluence page changes proposed by the LLM.
 
 ### 3. Review approval applies the Confluence changes
 ![Confluence change applied](screenshots/approval.png)
-Reviwer adds **approve-confluence** comments.
+Reviewer adds **approve-confluence** comments.
 
 ### 4. Confluence (After approval in PR)
 ![Confluence page after change is approved PR](screenshots/confluence-after.png)
@@ -125,6 +207,7 @@ This compiles the TypeScript and bundles everything (including `node_modules`) i
 ## Security considerations
 
 - All tokens (Confluence, LLM API key) are masked from logs using `core.setSecret()`
+- If PRs come from forks, permissions/secrets may not be available (recommended: restrict to same-repo PRs).
 - The `apply` mode strictly validates that the approver has `write`, `admin`, or `maintain` permission via the GitHub Collaborator API before touching Confluence
 - The `dry_run` input lets you test the full pipeline without writing any changes
 - The proposal JSON is embedded in the PR comment so no external state store is needed
