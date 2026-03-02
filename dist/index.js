@@ -80318,24 +80318,36 @@ function applyChange(storageBody, type, heading, beforeExcerpt, afterMarkdown) {
 function escapeForRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-function updateSection(body, _heading, beforeExcerpt, afterXhtml) {
-    if (!beforeExcerpt)
-        return body + '\n' + afterXhtml;
-    // Try to locate the before_excerpt in the storage body (may contain HTML tags)
-    const plainExcerpt = escapeForRegex(beforeExcerpt.trim());
-    // Attempt exact match first
-    if (body.includes(beforeExcerpt.trim())) {
-        return body.replace(beforeExcerpt.trim(), afterXhtml.trim());
+function updateSection(body, heading, beforeExcerpt, afterXhtml) {
+    if (!beforeExcerpt.trim()) {
+        return appendAfterHeading(body, heading, afterXhtml);
     }
-    // Fuzzy: strip HTML from body and try matching plain text
-    const strippedBody = body.replace(/<[^>]+>/g, '');
-    if (strippedBody.includes(beforeExcerpt.trim())) {
-        // Find the paragraph boundary around the excerpt and replace
-        const pattern = new RegExp(`(<[^>]+>)?${plainExcerpt}(</[^>]+>)?`, 'g');
-        return body.replace(pattern, afterXhtml.trim());
+    const excerpt = beforeExcerpt.trim();
+    const targetRange = findSectionRange(body, heading) ?? { start: 0, end: body.length };
+    const section = body.slice(targetRange.start, targetRange.end);
+    // Attempt exact match in the target section first.
+    if (section.includes(excerpt)) {
+        const updatedSection = section.replace(excerpt, afterXhtml.trim());
+        return body.slice(0, targetRange.start) + updatedSection + body.slice(targetRange.end);
     }
-    // Fallback: append at end
-    return body + '\n' + afterXhtml;
+    // Replace the first block (<li> / <p>) whose normalized text matches.
+    const normalizedExcerpt = normalizeForMatch(excerpt);
+    if (!normalizedExcerpt)
+        return body;
+    const blockPattern = /<li\b[^>]*>[\s\S]*?<\/li>|<p\b[^>]*>[\s\S]*?<\/p>/gi;
+    let match;
+    while ((match = blockPattern.exec(section)) !== null) {
+        const candidate = match[0];
+        if (!normalizeForMatch(candidate).includes(normalizedExcerpt))
+            continue;
+        const replacement = getBlockAwareReplacement(candidate, afterXhtml);
+        const updatedSection = section.slice(0, match.index) +
+            replacement +
+            section.slice(match.index + candidate.length);
+        return body.slice(0, targetRange.start) + updatedSection + body.slice(targetRange.end);
+    }
+    // Do not append for failed update matches; preserve source when anchor is ambiguous.
+    return body;
 }
 function appendAfterHeading(body, heading, afterXhtml) {
     const headingPattern = new RegExp(`(<h[1-6][^>]*>[^<]*${escapeForRegex(heading)}[^<]*</h[1-6]>)`, 'i');
@@ -80349,6 +80361,46 @@ function deleteSection(body, _heading, beforeExcerpt) {
     if (!beforeExcerpt)
         return body;
     return body.replace(beforeExcerpt.trim(), '');
+}
+function findSectionRange(body, heading) {
+    if (!heading.trim())
+        return null;
+    const headingPattern = new RegExp(`<h([1-6])[^>]*>[^<]*${escapeForRegex(heading.trim())}[^<]*</h\\1>`, 'i');
+    const headingMatch = headingPattern.exec(body);
+    if (!headingMatch || headingMatch.index < 0)
+        return null;
+    const sectionStart = headingMatch.index + headingMatch[0].length;
+    const rest = body.slice(sectionStart);
+    const nextHeadingPattern = /<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/i;
+    const nextMatch = nextHeadingPattern.exec(rest);
+    const sectionEnd = nextMatch ? sectionStart + nextMatch.index : body.length;
+    return { start: sectionStart, end: sectionEnd };
+}
+function decodeHtmlEntities(input) {
+    return input
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+}
+function normalizeForMatch(input) {
+    return decodeHtmlEntities(input)
+        .replace(/\\([\\`*_{}\[\]()#+\-.!|])/g, '$1')
+        .replace(/^\s*[-*+]\s+/gm, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/[`*_]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+function getBlockAwareReplacement(currentBlock, afterXhtml) {
+    const trimmed = afterXhtml.trim();
+    if (!/^<li\b/i.test(currentBlock))
+        return trimmed;
+    const singleListItem = trimmed.match(/^<ul>\s*(<li\b[\s\S]*<\/li>)\s*<\/ul>$/i);
+    return singleListItem ? singleListItem[1] : trimmed;
 }
 
 
