@@ -1,0 +1,37 @@
+{
+  "name": "confluence-pr-sync-agent",
+  "version": "1.0.0",
+  "description": "GitHub Action: sync Confluence docs from PR diffs via LLM",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && ncc build src/index.ts -o dist --source-map --license licenses.txt",
+    "build:watch": "tsc --watch",
+    "lint": "eslint src/**/*.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "@ai-sdk/anthropic": "^0.0.39",
+    "@ai-sdk/google": "^0.0.43",
+    "@ai-sdk/openai": "^0.0.52",
+    "ai": "^3.3.4",
+    "markdown-it": "^14.1.0",
+    "micromatch": "^4.0.7",
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/micromatch": "^4.0.9",
+    "@types/node": "^20.14.0",
+    "@types/turndown": "^5.0.4",
+    "@vercel/ncc": "^0.38.1",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

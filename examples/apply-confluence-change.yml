@@ -1,0 +1,36 @@
+name: Apply Confluence Changes
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: confluence-apply-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply Confluence Updates
+    runs-on: ubuntu-latest
+    if: |
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'approve-confluence')
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: kavingct/confluence-pr-doc-sync@v1
+        with:
+          mode: apply
+          confluence_type: cloud
+          confluence_base_url: ${{ vars.CONFLUENCE_BASE_URL }}
+          confluence_token: ${{ secrets.CONFLUENCE_TOKEN }}
+          confluence_user: ${{ vars.CONFLUENCE_USER }}
+          page_ids: |
+            123456789
+            987654321
+          llm_provider: anthropic
+          llm_model: claude-3-5-sonnet-20241022
+          llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

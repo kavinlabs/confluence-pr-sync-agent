@@ -1,0 +1,36 @@
+name: Propose Confluence Changes
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: confluence-propose-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  propose:
+    name: Propose Confluence Updates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kavingct/confluence-pr-doc-sync@v1
+        with:
+          mode: propose
+          confluence_type: cloud
+          confluence_base_url: ${{ vars.CONFLUENCE_BASE_URL }}
+          confluence_token: ${{ secrets.CONFLUENCE_TOKEN }}
+          confluence_user: ${{ vars.CONFLUENCE_USER }}
+          page_ids: |
+            123456789
+            987654321
+          llm_provider: anthropic
+          llm_model: claude-3-5-sonnet-20241022
+          llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
