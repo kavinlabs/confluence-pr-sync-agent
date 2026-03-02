@@ -79847,6 +79847,7 @@ async function runApply(inputs, context, octokit) {
     const confluenceClient = new confluence_1.ConfluenceClient(inputs.confluenceBaseUrl, inputs.confluenceType, inputs.confluenceToken, inputs.confluenceUser);
     const updatedPageIds = [];
     const updatedLinks = [];
+    const unchangedPageIds = [];
     for (const pageProposal of proposal.pages) {
         try {
             //Re-fetch latest version
@@ -79854,7 +79855,16 @@ async function runApply(inputs, context, octokit) {
             let newStorageBody = currentPage.storageBody;
             for (const change of pageProposal.changes) {
                 core.info(`Applying change type="${change.type}" heading="${change.heading}" to page ${pageProposal.id}`);
+                const previousBody = newStorageBody;
                 newStorageBody = (0, converter_1.applyChange)(newStorageBody, change.type, change.heading, change.before_excerpt, change.after_markdown);
+                if (newStorageBody === previousBody) {
+                    core.warning(`No-op change type="${change.type}" heading="${change.heading}" on page ${pageProposal.id} (anchor not found or content already up-to-date)`);
+                }
+            }
+            if (newStorageBody === currentPage.storageBody) {
+                core.warning(`No effective content changes for page ${pageProposal.id}; skipping Confluence update`);
+                unchangedPageIds.push(pageProposal.id);
+                continue;
             }
             if (inputs.dryRun) {
                 core.info(`[dry-run] Would update page ${pageProposal.id}`);
@@ -79883,7 +79893,10 @@ async function runApply(inputs, context, octokit) {
             owner,
             repo,
             issue_number: prNumber,
-            body: `${prefix}Confluence pages updated by @${actor}!\n\n${linksMarkdown}`,
+            body: `${prefix}Confluence pages updated by @${actor}!\n\n${linksMarkdown}` +
+                (unchangedPageIds.length
+                    ? `\n\nNo-op (not updated): ${unchangedPageIds.map((id) => `\`${id}\``).join(', ')}`
+                    : ''),
         });
         core.setOutput('updated_page_ids', updatedPageIds.join(','));
     }
@@ -79892,7 +79905,9 @@ async function runApply(inputs, context, octokit) {
             owner,
             repo,
             issue_number: prNumber,
-            body: `@${actor}, no pages were updated. Check the Action logs for errors.`,
+            body: unchangedPageIds.length > 0
+                ? `@${actor}, no pages were updated because no effective content changes were detected (anchors not found or content already up-to-date): ${unchangedPageIds.map((id) => `\`${id}\``).join(', ')}. Check Action logs for no-op warnings.`
+                : `@${actor}, no pages were updated. Check the Action logs for errors.`,
         });
     }
 }
