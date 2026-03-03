@@ -4,7 +4,7 @@ A GitHub Action that uses an LLM to keep your Confluence documentation in sync w
 
 When a Pull Request is opened or updated, the action reads the diff, fetches the relevant Confluence pages, and asks an LLM to propose targeted documentation updates. A collaborator can then approve the changes with a single comment.
 
-Check out this **[Demo PR](https://github.com/kavinlabs/ai-code-reviewer-personality-api/pull/6)** to see it in action
+Check out this **[Demo PR](https://github.com/AsyncBuilds/ai-code-reviewer-personality-api/pull/6)** to see it in action
 
 
 ## Example workflows
@@ -33,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: kavinlabs/confluence-pr-sync-agent@v1
+      - uses: AsyncBuilds/confluence-pr-sync-agent@v1
         with:
           mode: propose
           confluence_type: cloud
@@ -74,7 +74,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: kavinlabs/confluence-pr-sync-agent@v1
+      - uses: AsyncBuilds/confluence-pr-sync-agent@v1
         with:
           mode: apply
           confluence_type: cloud

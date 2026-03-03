@@ -21,7 +21,7 @@ jobs:
       issues: write
 
     steps:
-      - uses: kavinlabs/confluence-pr-sync-agent@v1
+      - uses: AsyncBuilds/confluence-pr-sync-agent@v1
         with:
           mode: apply
           confluence_type: cloud
